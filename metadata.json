@@ -1,0 +1,5 @@
+{
+  "name": "Shuoxing BI Dashboard",
+  "description": "A comprehensive data backend dashboard for managing countries, costs, media, apps, advertisers, and CPI configurations.",
+  "requestFramePermissions": []
+}
