@@ -108,6 +108,9 @@ const generateCostData = (): CostRecord[] => {
       gameName: `${project}-${platform}`,
       media: media,
       region: REGIONS[Math.floor(Math.random() * REGIONS.length)],
+      campaign: '-',
+      adGroup: '-',
+      ad: '-',
       cost: (Math.random() * 1000).toFixed(2), 
       currency: 'USD',
       operator: media === 'ASA' ? '邓文豪' : '系统拉取',
@@ -126,6 +129,9 @@ export const INITIAL_MEDIA_DATA: Media[] = [
   { id: 5, name: 'Unity', mappingField: 'unity_ads', import: true, cpi: false, type: '广告' },
   { id: 6, name: 'IronSource', mappingField: 'iron_source', import: true, cpi: false, type: '广告' },
   { id: 7, name: 'Applovin', mappingField: 'applovin', import: true, cpi: false, type: '广告' },
+  // Added requested items
+  { id: 8, name: 'Organic', mappingField: 'organic', import: false, cpi: false, type: '自然量' },
+  { id: 9, name: 'KOL_达达', mappingField: 'kol_dada_onelink', import: true, cpi: false, type: '营销' },
 ];
 
 // 4. App Data

@@ -14,8 +14,8 @@ const TIME_DIMENSIONS = [
 
 const STANDARD_TIERS = ['T1', 'T2', 'T3', 'T4'];
 
-// Reordered: Tier/Country moved up, Ad levels moved to bottom
-const SPLIT_DIMENSIONS = ['游戏', '归属', '媒体', 'Tier', '国家', '广告系列', '广告组', '广告'];
+// Reordered: Added '项目' (Project) to dimensions
+const SPLIT_DIMENSIONS = ['项目', '游戏', '归属', '媒体', 'Tier', '国家', '广告系列', '广告组', '广告'];
 const AD_LEVEL_DIMENSIONS = ['广告系列', '广告组', '广告'];
 
 const COHORT_METRICS = [
@@ -25,7 +25,8 @@ const COHORT_METRICS = [
   '总储值金额', '总ROI'
 ];
 
-const ORGANIC_CHANNELS = ['Organic'];
+// Removed hardcoded ORGANIC_CHANNELS, now driven by Media Data
+// const ORGANIC_CHANNELS = ['Organic'];
 
 // Specific Mock Countries covering T1, T2, T3
 const MOCK_COUNTRIES_LIST = [
@@ -124,9 +125,11 @@ const generateDateSteps = (start: string, end: string, type: string) => {
 };
 
 // --- Mock Data Generator ---
+// Modified to accept 'availableMedia' to correctly identify Organic types
 const generateReportData = (filters: any) => {
   const rows: any[] = [];
   const dateSteps = generateDateSteps(filters.dateRange.start, filters.dateRange.end, filters.timeDim);
+  const { availableMedia } = filters;
 
   let idCounter = 1;
 
@@ -142,36 +145,57 @@ const generateReportData = (filters: any) => {
     for (let i = 0; i < loopCount; i++) {
       const row: any = { id: idCounter++ };
       row['日期'] = displayDate;
-      row['project_raw'] = filters.project || 'Project'; // Helper for summary
+      
+      // Determine Project
+      const selectedProjects = filters.projects && filters.projects.length > 0 ? filters.projects : ['All'];
+      const currentProject = selectedProjects[i % selectedProjects.length];
+      
+      row['project_raw'] = currentProject; // Helper for summary
 
       // Randomly select a Country/Tier Combo
       const randomCountry = MOCK_COUNTRIES_LIST[Math.floor(Math.random() * MOCK_COUNTRIES_LIST.length)];
 
-      // Determine Media first to check if Organic
+      // Determine Media
       let currentMedia = 'Facebook';
+      // Find an 'Organic' type media for fallback/mixing
+      const organicMediaName = availableMedia.find((m: Media) => m.type === '自然量')?.name || 'Organic';
+
       if (filters.splitDimensions.includes('媒体')) {
-        currentMedia = filters.media.length > 0 ? filters.media[i % filters.media.length] : (i === 0 ? 'Facebook' : 'Organic');
+        if (filters.media.length > 0) {
+           currentMedia = filters.media[i % filters.media.length];
+        } else {
+           // Mix of paid and organic if no media selected
+           currentMedia = (i === 0) ? 'Facebook' : organicMediaName;
+        }
       } else {
-         // Default if not split by media, usually aggregate, but here we simulate a row context
-         // If "Attribution" is split, we align media.
+         // Default if not split by media
          if (filters.splitDimensions.includes('归属')) {
-            currentMedia = (i % 2 === 0) ? 'Facebook' : 'Organic'; 
+            currentMedia = (i % 2 === 0) ? 'Facebook' : organicMediaName; 
          }
       }
 
-      // Force Organic channel if Attribution is Organic (just in case logic conflicts)
-      if (filters.splitDimensions.includes('归属') && row['归属'] === '自然量') currentMedia = 'Organic';
-      
-      const isOrganic = currentMedia === 'Organic';
+      // Identify Type based on configuration
+      const mediaObj = availableMedia.find((m: Media) => m.name === currentMedia);
+      const isOrganic = mediaObj ? mediaObj.type === '自然量' : currentMedia === 'Organic';
+      const attributionType = mediaObj ? mediaObj.type : (isOrganic ? '自然量' : '广告');
 
+      // Force Organic if Attribution split dictates it (mock data consistency)
+      if (filters.splitDimensions.includes('归属') && row['归属'] === '自然量') {
+         currentMedia = organicMediaName;
+      }
+      
       // Dimensions
       if (filters.splitDimensions.length === 0) {
         // No Split Default Columns
-        row['项目'] = filters.project || 'All';
+        row['项目'] = selectedProjects.length > 1 ? 'Multiple' : selectedProjects[0];
       } else {
         // Split Logic
-        if (filters.splitDimensions.includes('游戏')) row['游戏'] = filters.games.length === 1 ? filters.games[0] : `${filters.project}-${['Android', 'iOS'][i % 2]}`;
-        if (filters.splitDimensions.includes('归属')) row['归属'] = isOrganic ? '自然量' : '广告量';
+        if (filters.splitDimensions.includes('项目')) row['项目'] = currentProject;
+        if (filters.splitDimensions.includes('游戏')) row['游戏'] = filters.games.length === 1 ? filters.games[0] : `${currentProject}-${['Android', 'iOS'][i % 2]}`;
+        
+        // Attribution is now the Media Type
+        if (filters.splitDimensions.includes('归属')) row['归属'] = attributionType;
+        
         if (filters.splitDimensions.includes('媒体')) row['媒体'] = currentMedia;
         if (filters.splitDimensions.includes('Tier')) row['Tier'] = filters.tiers.length > 0 ? filters.tiers[i % filters.tiers.length] : randomCountry.tier;
         if (filters.splitDimensions.includes('国家')) row['国家'] = filters.countries.length > 0 ? filters.countries[i % filters.countries.length] : randomCountry.code;
@@ -292,7 +316,7 @@ const calculateSummary = (data: any[], filters: any) => {
   const summary: any = {
     id: 'summary',
     '日期': '汇总',
-    '项目': '-', // Or filters.project
+    '项目': '-',
     '花销': totalCost.toFixed(2),
     '安装': totalInstalls,
     '注册': totalRegs,
@@ -323,13 +347,6 @@ const calculateSummary = (data: any[], filters: any) => {
         summary[key] = retentionCount;
 
       } else if (metric.includes('ROI')) {
-        // ROI = Total Revenue / Total Cost
-        // Note: Total Cost includes paid only, but Total Revenue includes Organic too? 
-        // Usually ROI is Paid Revenue / Paid Cost. 
-        // But for "Total ROI" sometimes people want blended. 
-        // However, standard is usually (Sum of Revenue) / (Sum of Cost).
-        // Since Organic Cost is 0, it just boosts the ROI if we include Organic Revenue.
-        // Let's stick to strict Sum(Rev)/Sum(Cost).
         const totalRevenue = data.reduce((acc, curr) => acc + (curr[`_val_revenue_D${day}`] || 0), 0);
         summary[key] = totalCost ? ((totalRevenue / totalCost) * 100).toFixed(2) + '%' : '0.00%';
         
@@ -360,7 +377,7 @@ const IntegratedReport = () => {
   // Default Ranges
   const [dateRange, setDateRange] = useState({ start: '2026-02-01', end: '2026-02-07' });
   
-  const [project, setProject] = useState('DawnGod');
+  const [projects, setProjects] = useState<string[]>(['DawnGod']);
   const [games, setGames] = useState<string[]>([]);
   
   const [attribution, setAttribution] = useState<string>('all'); 
@@ -428,20 +445,25 @@ const IntegratedReport = () => {
 
   // --- Drill-down Logic ---
   const gameOptions = useMemo(() => {
-    if (!project) return [];
-    return [`${project}-Android`, `${project}-iOS`, `${project}-Huawei`, `${project}-PC`];
-  }, [project]);
+    if (projects.length === 0) return [];
+    return projects.flatMap(p => [`${p}-Android`, `${p}-iOS`, `${p}-Huawei`, `${p}-PC`]);
+  }, [projects]);
+
+  // Derive unique attribution types from available media
+  const attributionOptions = useMemo(() => {
+    const types = new Set(availableMedia.map(m => m.type));
+    return ['all', ...Array.from(types)];
+  }, [availableMedia]);
 
   const mediaOptions = useMemo(() => {
-    // Dynamically build media options from availableMedia state
-    const mediaNames = availableMedia.map(m => m.name);
-
-    if (attribution === 'ad') return mediaNames;
-    if (attribution === 'organic') return ORGANIC_CHANNELS;
+    // Filter available media based on selected Attribution (which corresponds to Media Type)
+    let filtered = availableMedia;
     
-    // Combine both for 'all'
-    // Ensure uniqueness just in case
-    return Array.from(new Set([...mediaNames, ...ORGANIC_CHANNELS]));
+    if (attribution !== 'all') {
+      filtered = availableMedia.filter(m => m.type === attribution);
+    }
+
+    return filtered.map(m => m.name);
   }, [attribution, availableMedia]);
 
   // Combined Tier Options (Standard Tiers + Custom Tiers from LocalStorage)
@@ -506,13 +528,18 @@ const IntegratedReport = () => {
   const handleQuery = () => {
     const sortedDays = getSortedMetricDays();
 
+    // Sort splitDimensions according to the order defined in SPLIT_DIMENSIONS
+    const sortedSplitDimensions = [...splitDimensions].sort((a, b) => {
+      return SPLIT_DIMENSIONS.indexOf(a) - SPLIT_DIMENSIONS.indexOf(b);
+    });
+
     // 1. Generate Columns Header
     // Fixed columns: Date, Project, Cost, Installs, Reg, RegRate, CPA
     let baseDims = [];
-    if (splitDimensions.length === 0) {
+    if (sortedSplitDimensions.length === 0) {
       baseDims = ['日期', '项目', '花销', '安装', '注册', '注册率', 'CPA'];
     } else {
-      baseDims = ['日期', ...splitDimensions, '花销', '安装', '注册', '注册率', 'CPA'];
+      baseDims = ['日期', ...sortedSplitDimensions, '花销', '安装', '注册', '注册率', 'CPA'];
     }
 
     const metrics: string[] = [];
@@ -524,13 +551,14 @@ const IntegratedReport = () => {
     setGeneratedColumns([...baseDims, ...metrics]);
 
     // 2. Generate Data
+    // Pass availableMedia to generator to handle dynamic types
     const data = generateReportData({
-      timeDim, dateRange, project, games, splitDimensions, cohortMetrics, 
-      metricDays: sortedDays, media, tiers, countries
+      timeDim, dateRange, projects, games, splitDimensions: sortedSplitDimensions, cohortMetrics, 
+      metricDays: sortedDays, media, tiers, countries, availableMedia
     });
     
     // 3. Generate Summary
-    const summary = calculateSummary(data, { splitDimensions, cohortMetrics, metricDays: sortedDays });
+    const summary = calculateSummary(data, { splitDimensions: sortedSplitDimensions, cohortMetrics, metricDays: sortedDays });
 
     setReportData(data);
     setSummaryData(summary);
@@ -608,7 +636,7 @@ const IntegratedReport = () => {
   // Initial load
   useEffect(() => {
     handleQuery();
-  }, []);
+  }, [availableMedia]); // Re-run query when media loads to correct initial "Organic" parsing if needed
 
   const renderDateInputs = () => {
     const inputClass = "h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none flex-1 min-w-0";
@@ -731,41 +759,50 @@ const IntegratedReport = () => {
           <hr className="border-dashed border-slate-200"/>
 
           {/* Row 2: Project & Media */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">项目</label>
-              <select className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none cursor-pointer" value={project} onChange={e=>{setProject(e.target.value); setGames([]);}}>
-                {PROJECTS.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="col-span-1">
+                <MultiSelectDropdown 
+                label="项目" 
+                options={PROJECTS} 
+                selected={projects} 
+                onToggle={handleToggle(setProjects)} 
+                placeholder="全部项目" 
+                />
             </div>
-            <MultiSelectDropdown label="游戏 (钻取)" options={gameOptions} selected={games} onToggle={handleToggle(setGames)} placeholder={project ? "全部游戏" : "请先选项目"} />
             
-            <div className="grid grid-cols-3 gap-2">
-               <div className="col-span-1 space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">归属</label>
-                  <select className="w-full h-10 px-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none cursor-pointer" value={attribution} onChange={e=>setAttribution(e.target.value)}>
-                    <option value="all">全部</option><option value="ad">广告量</option><option value="organic">自然量</option>
-                  </select>
-               </div>
-               <div className="col-span-2">
-                  <MultiSelectDropdown label="媒体渠道" options={mediaOptions} selected={media} onToggle={handleToggle(setMedia)} placeholder="全部媒体" searchable />
-               </div>
+            <div className="col-span-1">
+                <MultiSelectDropdown label="游戏 (钻取)" options={gameOptions} selected={games} onToggle={handleToggle(setGames)} placeholder={projects.length > 0 ? "全部游戏" : "请先选项目"} />
             </div>
-            <div className="grid grid-cols-3 gap-2">
-               <div className="col-span-1">
-                  <MultiSelectDropdown 
-                    label="Tier & 分组" 
-                    options={tierOptions} 
-                    selected={tiers} 
-                    onToggle={handleToggle(setTiers)} 
-                    placeholder="All" 
-                    disabledOptions={disabledTierOptions}
-                    disabledMessage="标准分组与自定义分组互斥，且自定义分组仅支持单选"
-                  />
-               </div>
-               <div className="col-span-2">
-                  <MultiSelectDropdown label="国家/地区" options={countryOptions} selected={countries} onToggle={handleToggle(setCountries)} placeholder="全部国家" searchable />
-               </div>
+            
+            <div className="col-span-1 space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest pl-1">归属 (Type)</label>
+                <select className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none cursor-pointer" value={attribution} onChange={e=>setAttribution(e.target.value)}>
+                <option value="all">全部 (All)</option>
+                {/* Dynamic Attribution Types */}
+                {attributionOptions.filter(t => t !== 'all').map(t => (
+                    <option key={t} value={t}>{t}</option>
+                ))}
+                </select>
+            </div>
+
+            <div className="col-span-1">
+                <MultiSelectDropdown label="媒体渠道" options={mediaOptions} selected={media} onToggle={handleToggle(setMedia)} placeholder="全部媒体" searchable />
+            </div>
+
+            <div className="col-span-1">
+                <MultiSelectDropdown 
+                label="Tier & 分组" 
+                options={tierOptions} 
+                selected={tiers} 
+                onToggle={handleToggle(setTiers)} 
+                placeholder="All" 
+                disabledOptions={disabledTierOptions}
+                disabledMessage="标准分组与自定义分组互斥，且自定义分组仅支持单选"
+                />
+            </div>
+
+            <div className="col-span-1">
+                <MultiSelectDropdown label="国家/地区" options={countryOptions} selected={countries} onToggle={handleToggle(setCountries)} placeholder="全部国家" searchable />
             </div>
           </div>
 

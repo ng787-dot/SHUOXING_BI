@@ -151,7 +151,7 @@ const MediaManagement = () => {
                   </span>
                 </td>
                 <td className="px-8 text-center">
-                  <span className={`px-3 py-1 rounded-md text-[10px] font-black border ${item.type === '广告' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-purple-50 text-purple-600 border-purple-100'}`}>
+                  <span className={`px-3 py-1 rounded-md text-[10px] font-black border ${item.type === '广告' ? 'bg-blue-50 text-blue-600 border-blue-100' : item.type === '自然量' ? 'bg-green-50 text-green-600 border-green-100' : 'bg-purple-50 text-purple-600 border-purple-100'}`}>
                     {item.type}
                   </span>
                 </td>
@@ -233,14 +233,18 @@ const MediaManagement = () => {
 
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">媒体类型</label>
-                <div className="flex gap-4 pt-1">
-                  <label className={`flex-1 h-10 flex items-center justify-center gap-2 rounded-lg border cursor-pointer transition-all ${formData.type === '广告' ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
+                <div className="flex gap-2 pt-1">
+                  <label className={`flex-1 h-10 flex items-center justify-center gap-1 rounded-lg border cursor-pointer transition-all ${formData.type === '广告' ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
                     <input type="radio" name="type" className="hidden" checked={formData.type === '广告'} onChange={() => setFormData({...formData, type: '广告'})} />
-                    <span className="text-xs font-black uppercase">广告 (Ads)</span>
+                    <span className="text-[10px] font-black uppercase">广告</span>
                   </label>
-                  <label className={`flex-1 h-10 flex items-center justify-center gap-2 rounded-lg border cursor-pointer transition-all ${formData.type === '营销' ? 'bg-purple-600 text-white border-purple-600 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
+                  <label className={`flex-1 h-10 flex items-center justify-center gap-1 rounded-lg border cursor-pointer transition-all ${formData.type === '营销' ? 'bg-purple-600 text-white border-purple-600 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
                     <input type="radio" name="type" className="hidden" checked={formData.type === '营销'} onChange={() => setFormData({...formData, type: '营销'})} />
-                    <span className="text-xs font-black uppercase">营销 (Marketing)</span>
+                    <span className="text-[10px] font-black uppercase">营销</span>
+                  </label>
+                  <label className={`flex-1 h-10 flex items-center justify-center gap-1 rounded-lg border cursor-pointer transition-all ${formData.type === '自然量' ? 'bg-green-600 text-white border-green-600 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
+                    <input type="radio" name="type" className="hidden" checked={formData.type === '自然量'} onChange={() => setFormData({...formData, type: '自然量'})} />
+                    <span className="text-[10px] font-black uppercase">自然量</span>
                   </label>
                 </div>
               </div>

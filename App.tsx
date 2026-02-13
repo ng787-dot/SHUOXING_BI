@@ -22,7 +22,7 @@ const App = () => {
         { id: 'country', label: '国家组合管理', icon: Database },
         { id: 'cost', label: '花费管理', icon: BarChart3 },
         { id: 'media', label: '媒体管理', icon: Globe },
-        { id: 'app', label: '应用管理', icon: Smartphone },
+        { id: 'app', label: '授权管理', icon: Smartphone },
         { id: 'advertiser', label: '广告主管理', icon: UserCheck },
         { id: 'cpi', label: 'CPI 管理', icon: DollarSign },
       ]

@@ -21,6 +21,9 @@ export interface CostRecord {
   gameName: string;
   media: string;
   region: string;
+  campaign?: string;
+  adGroup?: string;
+  ad?: string;
   cost: string;
   currency: string;
   operator: string;
