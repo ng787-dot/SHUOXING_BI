@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, Globe, PieChart, Database, BarChart3, Smartphone, UserCheck, DollarSign, Monitor, LayoutGrid } from 'lucide-react';
+import { Users, Globe, PieChart, Database, BarChart3, Smartphone, UserCheck, DollarSign, Monitor, LayoutGrid, Bot, Cpu } from 'lucide-react';
 import { MenuItem } from './types';
 
 // Feature Components
@@ -11,6 +11,8 @@ import AdvertiserManagement from './components/AdvertiserManagement';
 import CPIManagement from './components/CPIManagement';
 import MarketReport from './components/MarketReport';
 import DataDashboard from './components/DataDashboard';
+import AIAnalysis from './components/AIAnalysis';
+import AutomationRobots from './components/AutomationRobots';
 
 const App = () => {
   const [activeTab, setActiveTab] = useState('country');
@@ -34,6 +36,10 @@ const App = () => {
          { id: 'dashboard', label: '数据仪表盘', icon: LayoutGrid }
       ]
     },
+    // New Modules
+    { id: 'ai_analysis', icon: Bot, label: 'AI 分析功能' },
+    { id: 'automation', icon: Cpu, label: '自动化机器人' },
+    
     { id: 'user', icon: Users, label: '用户信息' },
   ];
 
@@ -47,6 +53,8 @@ const App = () => {
       case 'cpi': return <CPIManagement />;
       case 'report': return <MarketReport />;
       case 'dashboard': return <DataDashboard />;
+      case 'ai_analysis': return <AIAnalysis />;
+      case 'automation': return <AutomationRobots />;
       default: return (
         <div className="flex flex-col items-center justify-center h-[60vh] text-slate-300">
           <Monitor size={80} className="mb-6 opacity-10 animate-pulse" />
@@ -55,6 +63,12 @@ const App = () => {
       );
     }
   };
+
+  const Badge = () => (
+    <span className="ml-auto text-[8px] bg-indigo-500 text-white px-1.5 py-0.5 rounded border border-indigo-400 font-normal opacity-90 tracking-tighter scale-90 origin-right whitespace-nowrap">
+      下次需求
+    </span>
+  );
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-700 font-sans overflow-hidden">
@@ -68,13 +82,21 @@ const App = () => {
           {menuItems.map((item) => (
             <div key={item.id} className="mb-2">
               <button onClick={() => !item.subItems && setActiveTab(item.id)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all group ${activeTab === item.id ? 'bg-blue-600 text-white shadow-lg' : ''}`}>
-                <item.icon size={20} className="group-hover:scale-110 transition-transform" /><span className="font-bold text-sm tracking-wide">{item.label}</span>
+                <item.icon size={20} className="group-hover:scale-110 transition-transform shrink-0" />
+                <div className="font-bold text-sm tracking-wide flex-1 text-left flex items-center justify-between">
+                  <span>{item.label}</span>
+                  {(item.id === 'ai_analysis' || item.id === 'automation') && <Badge />}
+                </div>
               </button>
               {item.subItems && (
                 <div className="ml-10 mt-2 space-y-1.5 border-l-2 border-slate-800 pl-4 text-left">
                   {item.subItems.map(sub => (
                     <button key={sub.id} onClick={() => setActiveTab(sub.id)} className={`w-full text-left py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center gap-2.5 ${activeTab === sub.id ? 'bg-blue-600 text-white shadow-xl translate-x-2' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'}`}>
-                      <sub.icon size={15} />{sub.label}
+                      <sub.icon size={15} className="shrink-0" />
+                      <div className="flex-1 flex items-center justify-between">
+                        <span>{sub.label}</span>
+                        {sub.id === 'dashboard' && <Badge />}
+                      </div>
                     </button>
                   ))}
                 </div>
