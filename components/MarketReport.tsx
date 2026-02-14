@@ -239,21 +239,44 @@ const generateReportData = (filters: any) => {
       const registrations = Math.floor(installs * regRate);
 
       // Ad Frontend Data Simulation
+      // Logic Update: Reverse calculate based on Installs
+      // Target CVR: 20% - 30%
+      // Target CTR: 0.5% - 1.5%
       if (adMetrics && adMetrics.length > 0) {
-        // CPM ranges $10-$30 typically
-        const cpm = 10 + Math.random() * 20;
-        // Impressions = Cost / (CPM / 1000)
-        const impressions = isOrganic ? 0 : Math.floor(cost / (cpm / 1000));
-        
-        // CTR ranges 0.5% - 2.5%
-        const ctr = 0.005 + Math.random() * 0.02;
-        const clicks = Math.floor(impressions * ctr);
-        
-        // CVR = Installs / Clicks
-        const cvr = clicks > 0 ? installs / clicks : 0;
+        let impressions = 0;
+        let clicks = 0;
+        let cpm = 0;
+        let ctr = 0;
+        let cvr = 0;
+        let ir = 0;
 
-        // IR = Installs / Impressions
-        const ir = impressions > 0 ? installs / impressions : 0;
+        if (!isOrganic && installs > 0) {
+           // 1. Determine realistic rates within requested ranges
+           const targetCVR = 0.20 + Math.random() * 0.10; // 0.20 - 0.30
+           const targetCTR = 0.005 + Math.random() * 0.01; // 0.005 - 0.015
+
+           // 2. Reverse calculate Clicks from Installs
+           // Installs = Clicks * CVR  => Clicks = Installs / CVR
+           clicks = Math.floor(installs / targetCVR);
+           // Safety: Clicks must be >= installs
+           if (clicks < installs) clicks = installs;
+
+           // 3. Reverse calculate Impressions from Clicks
+           // Clicks = Impressions * CTR => Impressions = Clicks / CTR
+           impressions = Math.floor(clicks / targetCTR);
+           // Safety: Impressions must be >= clicks
+           if (impressions < clicks) impressions = clicks;
+
+           // 4. Calculate Derived Metrics (based on final integers)
+           if (impressions > 0) {
+              cpm = (cost / impressions) * 1000;
+              ctr = clicks / impressions;
+              ir = installs / impressions;
+           }
+           if (clicks > 0) {
+              cvr = installs / clicks;
+           }
+        }
 
         if (adMetrics.includes('展示量')) row['展示量'] = impressions;
         if (adMetrics.includes('点击量')) row['点击量'] = clicks;
