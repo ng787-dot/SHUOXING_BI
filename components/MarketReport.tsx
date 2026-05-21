@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, ChevronDown, ChevronUp, Save, FileDown, Layers, BarChart3, Settings2, Plus, X, Calendar, Clock, Calculator, AlertCircle } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, ChevronRight, Save, FileDown, Layers, BarChart3, Settings2, Plus, X, Calendar, Clock, Calculator, AlertCircle } from 'lucide-react';
 import MultiSelectDropdown from './MultiSelectDropdown';
 import { COUNTRY_FULL_DATA, PROJECTS, INITIAL_MEDIA_DATA, INITIAL_APP_DATA } from '../constants';
 import { CustomTier, Media } from '../types';
@@ -73,6 +73,25 @@ const SAVED_REPORTS_MOCK = [
 ];
 
 // --- Helper Functions ---
+
+const isMatch = (value: string, search: string, type: 'exact' | 'fuzzy') => {
+  if (!search.trim()) return true;
+  const orGroups = search.split(',').map(s => s.trim()).filter(Boolean);
+  if (orGroups.length === 0) return true;
+
+  const valObj = String(value || '');
+
+  return orGroups.some(orGroup => {
+    const andTerms = orGroup.split('&').map(s => s.trim()).filter(Boolean);
+    return andTerms.every(term => {
+      if (type === 'exact') {
+        return valObj === term;
+      } else {
+        return valObj.includes(term);
+      }
+    });
+  });
+};
 
 // Get Week Range: 2026-W10 -> 2026/03/02~2026/03/08
 const getWeekRangeLabel = (weekStr: string) => {
@@ -156,73 +175,93 @@ const generateReportData = (filters: any) => {
     let displayDate = dateStep;
     if (filters.timeDim === 'weekly') displayDate = getWeekRangeLabel(dateStep);
 
-    // Determine loop count based on split dimensions
-    // If no split, 1 row. If split, random 2-4 rows to simulate breakdown.
-    const loopCount = filters.splitDimensions.length === 0 ? 1 : Math.floor(Math.random() * 3) + 2;
+    // Determine base iterations based on split dimensions
+    const hasCmp = filters.splitDimensions.includes('广告系列');
+    const hasGrp = filters.splitDimensions.includes('广告组');
+    const hasAd = filters.splitDimensions.includes('广告');
 
-    for (let i = 0; i < loopCount; i++) {
-      const row: any = { id: idCounter++ };
-      row['日期'] = displayDate;
+    let cmpCount = 1;
+    if (hasCmp || hasGrp || hasAd) {
+       cmpCount = hasCmp ? 2 : 1; // 2 campaigns per date if campaign is selected
+    } else {
+       cmpCount = filters.splitDimensions.length === 0 ? 1 : Math.floor(Math.random() * 3) + 2;
+    }
+
+    for (let c = 0; c < cmpCount; c++) {
+      const cmpName = `Cmp_${['Launch','Retarget','Brand'][c % 3]}_${Math.floor(Math.random() * 100)}`;
+      let grpIterations = hasGrp ? Math.floor(Math.random() * 3) + 2 : 1; // 2 to 4
       
-      // Determine Project
-      const selectedProjects = filters.projects && filters.projects.length > 0 ? filters.projects : ['All'];
-      const currentProject = selectedProjects[i % selectedProjects.length];
-      
-      row['project_raw'] = currentProject; // Helper for summary
-
-      // Randomly select a Country/Tier Combo
-      const randomCountry = MOCK_COUNTRIES_LIST[Math.floor(Math.random() * MOCK_COUNTRIES_LIST.length)];
-
-      // Determine Media
-      let currentMedia = 'Facebook';
-      // Find an 'Organic' type media for fallback/mixing
-      const organicMediaName = availableMedia.find((m: Media) => m.type === '自然量')?.name || 'Organic';
-
-      if (filters.splitDimensions.includes('媒体')) {
-        if (filters.media.length > 0) {
-           currentMedia = filters.media[i % filters.media.length];
-        } else {
-           // Mix of paid and organic if no media selected
-           currentMedia = (i === 0) ? 'Facebook' : organicMediaName;
-        }
-      } else {
-         // Default if not split by media
-         if (filters.splitDimensions.includes('归属')) {
-            currentMedia = (i % 2 === 0) ? 'Facebook' : organicMediaName; 
-         }
-      }
-
-      // Identify Type based on configuration
-      const mediaObj = availableMedia.find((m: Media) => m.name === currentMedia);
-      const isOrganic = mediaObj ? mediaObj.type === '自然量' : currentMedia === 'Organic';
-      const attributionType = mediaObj ? mediaObj.type : (isOrganic ? '自然量' : '广告');
-
-      // Force Organic if Attribution split dictates it (mock data consistency)
-      if (filters.splitDimensions.includes('归属') && row['归属'] === '自然量') {
-         currentMedia = organicMediaName;
-      }
-      
-      // Dimensions
-      if (filters.splitDimensions.length === 0) {
-        // No Split Default Columns
-        row['项目'] = selectedProjects.length > 1 ? 'Multiple' : selectedProjects[0];
-      } else {
-        // Split Logic
-        if (filters.splitDimensions.includes('项目')) row['项目'] = currentProject;
-        if (filters.splitDimensions.includes('游戏')) row['游戏'] = filters.games.length === 1 ? filters.games[0] : `${currentProject}-${['Android', 'iOS'][i % 2]}`;
+      for (let g = 0; g < grpIterations; g++) {
+        const grpName = `${cmpName}_Grp_${['T1_High','Android_Bid','Video_Feed','Lookalike'][g % 4]}`;
+        let adIterations = hasAd ? Math.floor(Math.random() * 3) + 3 : 1; // 3 to 5
         
-        // Attribution is now the Media Type
-        if (filters.splitDimensions.includes('归属')) row['归属'] = attributionType;
-        
-        if (filters.splitDimensions.includes('媒体')) row['媒体'] = currentMedia;
-        if (filters.splitDimensions.includes('Tier')) row['Tier'] = filters.tiers.length > 0 ? filters.tiers[i % filters.tiers.length] : randomCountry.tier;
-        if (filters.splitDimensions.includes('国家')) row['国家'] = filters.countries.length > 0 ? filters.countries[i % filters.countries.length] : randomCountry.code;
-        
-        // Ad Drilldown Mock
-        if (filters.splitDimensions.includes('广告系列')) row['广告系列'] = `Cmp_${['Launch','Retarget','Brand'][i%3]}_2026`;
-        if (filters.splitDimensions.includes('广告组')) row['广告组'] = `Grp_${['T1_High','Android_Bid','Video_Feed'][i%3]}`;
-        if (filters.splitDimensions.includes('广告')) row['广告'] = `Ad_${['Video1','Img2','Playable'][i%3]}_${Math.floor(Math.random()*100)}`;
-      }
+        for (let a = 0; a < adIterations; a++) {
+          const adName = `${grpName}_Ad_${['Video1','Img2','Playable','UGC','Banner'][a % 5]}_${Math.floor(Math.random()*1000)}`;
+          
+          const i = c * 100 + g * 10 + a; // Keep a pseudo index for deterministic mock picking
+
+          const row: any = { id: idCounter++ };
+          row['日期'] = displayDate;
+          
+          // Determine Project
+          const selectedProjects = filters.projects && filters.projects.length > 0 ? filters.projects : ['All'];
+          const currentProject = selectedProjects[i % selectedProjects.length];
+          
+          row['project_raw'] = currentProject; // Helper for summary
+
+          // Randomly select a Country/Tier Combo
+          const randomCountry = MOCK_COUNTRIES_LIST[Math.floor(Math.random() * MOCK_COUNTRIES_LIST.length)];
+
+          // Determine Media
+          let currentMedia = 'Facebook';
+          // Find an 'Organic' type media for fallback/mixing
+          const organicMediaName = availableMedia.find((m: Media) => m.type === '自然量')?.name || 'Organic';
+
+          if (filters.splitDimensions.includes('媒体')) {
+            if (filters.media.length > 0) {
+               currentMedia = filters.media[i % filters.media.length];
+            } else {
+               // Mix of paid and organic if no media selected
+               currentMedia = (i === 0) ? 'Facebook' : organicMediaName;
+            }
+          } else {
+             // Default if not split by media
+             if (filters.splitDimensions.includes('归属')) {
+                currentMedia = (i % 2 === 0) ? 'Facebook' : organicMediaName; 
+             }
+          }
+
+          // Identify Type based on configuration
+          const mediaObj = availableMedia.find((m: Media) => m.name === currentMedia);
+          const isOrganic = mediaObj ? mediaObj.type === '自然量' : currentMedia === 'Organic';
+          const attributionType = mediaObj ? mediaObj.type : (isOrganic ? '自然量' : '广告');
+
+          // Force Organic if Attribution split dictates it (mock data consistency)
+          if (filters.splitDimensions.includes('归属') && row['归属'] === '自然量') {
+             currentMedia = organicMediaName;
+          }
+          
+          // Dimensions
+          if (filters.splitDimensions.length === 0) {
+            // No Split Default Columns
+            row['项目'] = selectedProjects.length > 1 ? 'Multiple' : selectedProjects[0];
+          } else {
+            // Split Logic
+            if (filters.splitDimensions.includes('项目')) row['项目'] = currentProject;
+            if (filters.splitDimensions.includes('游戏')) row['游戏'] = filters.games.length === 1 ? filters.games[0] : `${currentProject}-${['Android', 'iOS'][i % 2]}`;
+            
+            // Attribution is now the Media Type
+            if (filters.splitDimensions.includes('归属')) row['归属'] = attributionType;
+            
+            if (filters.splitDimensions.includes('媒体')) row['媒体'] = currentMedia;
+            if (filters.splitDimensions.includes('Tier')) row['Tier'] = filters.tiers.length > 0 ? filters.tiers[i % filters.tiers.length] : randomCountry.tier;
+            if (filters.splitDimensions.includes('国家')) row['国家'] = filters.countries.length > 0 ? filters.countries[i % filters.countries.length] : randomCountry.code;
+            
+            // Ad Drilldown Mock
+            if (hasCmp) row['广告系列'] = cmpName;
+            if (hasGrp) row['广告组'] = grpName;
+            if (hasAd) row['广告'] = adName;
+          }
 
       // --- Metrics Generation (Base Values) ---
       // Cost: Organic = 0. Paid = Random.
@@ -368,6 +407,8 @@ const generateReportData = (filters: any) => {
       });
 
       rows.push(row);
+        }
+      }
     }
   });
 
@@ -484,8 +525,21 @@ const IntegratedReport = () => {
   const [adMetrics, setAdMetrics] = useState<string[]>([]);
 
   const [reportData, setReportData] = useState<any[]>([]);
-  const [summaryData, setSummaryData] = useState<any>(null);
+  const [appliedQueryFilters, setAppliedQueryFilters] = useState<any>(null);
   const [generatedColumns, setGeneratedColumns] = useState<string[]>([]);
+
+  // Analytics Features State
+  const [adSearchType, setAdSearchType] = useState<'exact' | 'fuzzy'>('fuzzy');
+  const [cmpSearch, setCmpSearch] = useState('');
+  const [grpSearch, setGrpSearch] = useState('');
+  const [adSearch, setAdSearch] = useState('');
+  
+  const [sortConfig, setSortConfig] = useState<{key: string, direction: 'asc'|'desc'} | null>(null);
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+
+  const toggleExpand = (key: string) => {
+      setExpandedRows(prev => ({...prev, [key]: !prev[key]}));
+  };
 
   // Initialize saved reports and custom tiers from localStorage
   useEffect(() => {
@@ -689,8 +743,161 @@ const IntegratedReport = () => {
     const summary = calculateSummary(data, { splitDimensions: sortedSplitDimensions, cohortMetrics: sortedCohortMetrics, metricDays: sortedDays, adMetrics });
 
     setReportData(data);
-    setSummaryData(summary);
+    setAppliedQueryFilters({ splitDimensions: sortedSplitDimensions, cohortMetrics: sortedCohortMetrics, metricDays: sortedDays, adMetrics });
   };
+
+  const filteredFlatData = useMemo(() => {
+     return reportData.filter(row => {
+        let pass = true;
+        if (cmpSearch.trim() && generatedColumns.includes('广告系列') && row['广告系列']) pass = pass && isMatch(row['广告系列'], cmpSearch, adSearchType);
+        if (grpSearch.trim() && generatedColumns.includes('广告组') && row['广告组']) pass = pass && isMatch(row['广告组'], grpSearch, adSearchType);
+        if (adSearch.trim() && generatedColumns.includes('广告') && row['广告']) pass = pass && isMatch(row['广告'], adSearch, adSearchType);
+        return pass;
+     });
+  }, [reportData, cmpSearch, grpSearch, adSearch, adSearchType, generatedColumns]);
+
+  const summaryRow = useMemo(() => {
+      if (filteredFlatData.length === 0 || !appliedQueryFilters) return null;
+      return calculateSummary(filteredFlatData, appliedQueryFilters);
+  }, [filteredFlatData, appliedQueryFilters]);
+
+  // Derived Drill-down & Sorted Data
+  const displayData = useMemo(() => {
+     if (filteredFlatData.length === 0 || !appliedQueryFilters) return [];
+
+     const hasCmp = generatedColumns.includes('广告系列');
+     const hasGrp = generatedColumns.includes('广告组');
+     const hasAd = generatedColumns.includes('广告');
+     const isDrillDown = hasCmp && hasGrp;
+
+     const _sort = (arr: any[]) => {
+         if (!sortConfig) return arr;
+         return [...arr].sort((a,b) => {
+            let valA = a[sortConfig.key];
+            let valB = b[sortConfig.key];
+            if (valA === '-' || valA === undefined) valA = '';
+            if (valB === '-' || valB === undefined) valB = '';
+            
+            if (typeof valA === 'string' && valA.endsWith('%')) valA = parseFloat(valA) || 0;
+            if (typeof valB === 'string' && valB.endsWith('%')) valB = parseFloat(valB) || 0;
+            if (!isNaN(Number(valA)) && !isNaN(Number(valB)) && valA !== '' && valB !== '') {
+                valA = Number(valA);
+                valB = Number(valB);
+            }
+            if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+         });
+     };
+
+     if (!isDrillDown) {
+         return _sort(filteredFlatData);
+     }
+
+     const baseGroupKeys = ['日期', '项目', ...appliedQueryFilters.splitDimensions.filter((d: string) => !AD_LEVEL_DIMENSIONS.includes(d))];
+     
+     const groupByKey = (data: any[], keys: string[]) => {
+         const groups: Record<string, any[]> = {};
+         data.forEach(row => {
+             const key = keys.map(k => row[k]).join('|___|');
+             if (!groups[key]) groups[key] = [];
+             groups[key].push(row);
+         });
+         return groups;
+     };
+
+     const aggregateRowsStandalone = (data: any[], template: any) => {
+          const sum = (k: string) => data.reduce((acc, curr) => acc + (Number(curr[k]) || 0), 0);
+          const totalCost = sum('_cost');
+          const totalInstalls = sum('_installs');
+          const totalRegs = sum('_registrations');
+          const totalImpressions = sum('_impressions');
+          const totalClicks = sum('_clicks');
+ 
+          const row = { ...template, _cost: totalCost, _installs: totalInstalls, _registrations: totalRegs, _impressions: totalImpressions, _clicks: totalClicks };
+          row['花销'] = totalCost.toFixed(2);
+          row['安装'] = totalInstalls;
+          row['注册'] = totalRegs;
+          row['注册率'] = totalInstalls ? ((totalRegs / totalInstalls) * 100).toFixed(2) + '%' : '0.00%';
+          row['CPA'] = totalInstalls ? (totalCost / totalInstalls).toFixed(2) : '0.00';
+ 
+          if (appliedQueryFilters.adMetrics) {
+              if (appliedQueryFilters.adMetrics.includes('展示量')) row['展示量'] = totalImpressions;
+              if (appliedQueryFilters.adMetrics.includes('点击量')) row['点击量'] = totalClicks;
+              if (appliedQueryFilters.adMetrics.includes('CPM')) row['CPM'] = totalImpressions ? ((totalCost / totalImpressions) * 1000).toFixed(2) : '0.00';
+              if (appliedQueryFilters.adMetrics.includes('CTR')) row['CTR'] = totalImpressions ? ((totalClicks / totalImpressions) * 100).toFixed(2) + '%' : '0.00%';
+              if (appliedQueryFilters.adMetrics.includes('CVR')) row['CVR'] = totalClicks ? ((totalInstalls / totalClicks) * 100).toFixed(2) + '%' : '0.00%';
+              if (appliedQueryFilters.adMetrics.includes('IR')) row['IR'] = totalImpressions ? ((totalInstalls / totalImpressions) * 100).toFixed(4) + '%' : '0.00%';
+          }
+ 
+          appliedQueryFilters.cohortMetrics.forEach((metric: string) => {
+              appliedQueryFilters.metricDays.forEach((day: string) => {
+                  const key = `${metric} D${day}`;
+                  const d_ret = sum(`_val_留存人数_D${day}`);
+                  const d_rev = sum(`_val_revenue_D${day}`);
+                  row[`_val_留存人数_D${day}`] = d_ret;
+                  row[`_val_revenue_D${day}`] = d_rev;
+ 
+                  if (metric.includes('留存率')) {
+                      row[key] = totalInstalls ? ((d_ret / totalInstalls) * 100).toFixed(2) + '%' : '0.00%';
+                  } else if (metric.includes('留存人数')) {
+                      row[key] = d_ret;
+                  } else if (metric.includes('ROI')) {
+                      row[key] = totalCost ? ((d_rev / totalCost) * 100).toFixed(2) + '%' : '0.00%';
+                  } else if (metric.includes('LTV')) {
+                      row[key] = totalInstalls ? (d_rev / totalInstalls).toFixed(2) : '0.00';
+                  } else if (metric.includes('付费金额') || metric.includes('总储值')) {
+                      row[key] = d_rev.toFixed(2);
+                  } else {
+                      row[key] = '-';
+                  }
+              });
+          });
+          return row;
+     };
+
+     const finalRows: any[] = [];
+     const cmpGroupKeysArray = [...baseGroupKeys, '广告系列'];
+     const cmpGroups = groupByKey(filteredFlatData, cmpGroupKeysArray);
+     
+     const cmpAggregates = Object.keys(cmpGroups).map(k => {
+         const data = cmpGroups[k];
+         const template = { ...data[0], '广告组': '-', '广告': '-', isDrillDownRow: true, level: 0, drillKey: k };
+         return aggregateRowsStandalone(data, template);
+     });
+
+     const sortedCmpAggregates = _sort(cmpAggregates);
+
+     sortedCmpAggregates.forEach(cmpRow => {
+         finalRows.push(cmpRow);
+         const k = cmpRow.drillKey;
+         if (expandedRows[k]) {
+             const cmpData = cmpGroups[k];
+             const grpGroupKeysArray = [...cmpGroupKeysArray, '广告组'];
+             const grpGroups = groupByKey(cmpData, grpGroupKeysArray);
+
+             const grpAggregates = Object.keys(grpGroups).map(gk => {
+                 const data = grpGroups[gk];
+                 const template = { ...data[0], '广告': '-', isDrillDownRow: true, level: 1, drillKey: gk };
+                 return aggregateRowsStandalone(data, template);
+             });
+
+             const sortedGrpAggregates = _sort(grpAggregates);
+
+             sortedGrpAggregates.forEach(grpRow => {
+                 finalRows.push(grpRow);
+                 const gk = grpRow.drillKey;
+                 if (hasAd && expandedRows[gk]) {
+                     const adData = grpGroups[gk].map(row => ({ ...row, isDrillDownRow: true, level: 2 }));
+                     const sortedAdData = _sort(adData);
+                     sortedAdData.forEach(adRow => finalRows.push(adRow));
+                 }
+             });
+         }
+     });
+
+     return finalRows;
+  }, [filteredFlatData, expandedRows, sortConfig, appliedQueryFilters, generatedColumns]);
 
   // Save Report Function
   const handleSaveReport = () => {
@@ -698,48 +905,40 @@ const IntegratedReport = () => {
       alert("请输入报表名称 (Please enter report name)");
       return;
     }
-    const newReport = {
-      id: Date.now(),
-      name: reportName
-    };
+    const newReport = { id: Date.now(), name: reportName };
     const updatedReports = [...savedReports, newReport];
     setSavedReports(updatedReports);
     setSavedReportId(String(newReport.id));
     setReportName('');
-    // Persist to localStorage
     localStorage.setItem('market_reports', JSON.stringify(updatedReports));
     alert("报表保存成功 (Report Saved Successfully)");
   };
 
   // Fixed Export Functionality
   const handleExport = () => {
-    if (reportData.length === 0) {
+    if (filteredFlatData.length === 0) {
       alert("暂无数据可导出 (No data to export)");
       return;
     }
 
-    // Use current generated columns (safe because they are state driven)
-    const exportColumns = generatedColumns.length > 0 ? generatedColumns : Object.keys(reportData[0]).filter(k => !k.startsWith('_'));
+    const exportColumns = generatedColumns.length > 0 ? generatedColumns : Object.keys(filteredFlatData[0]).filter(k => !k.startsWith('_'));
     
     // 1. Headers
     const csvHeaders = exportColumns.join(',');
 
     // 2. Summary Row
     let summaryRowStr = '';
-    if (summaryData) {
+    if (summaryRow) {
       summaryRowStr = exportColumns.map((col, idx) => {
-         // First column usually gets the "Total" label
          if (idx === 0) return '汇总 Total';
-         // Check if data exists
-         let val = summaryData[col] !== undefined ? String(summaryData[col]) : '-';
-         // Escape quotes
+         let val = summaryRow[col] !== undefined ? String(summaryRow[col]) : '-';
          if (val.includes('"') || val.includes(',')) val = `"${val.replace(/"/g, '""')}"`;
          return val;
       }).join(',') + '\n';
     }
 
     // 3. Data Rows
-    const rowsStr = reportData.map(row => {
+    const rowsStr = filteredFlatData.map(row => {
       return exportColumns.map(col => {
         let val = row[col] !== undefined ? String(row[col]) : '-';
         if (val.includes('"') || val.includes(',')) val = `"${val.replace(/"/g, '""')}"`;
@@ -747,10 +946,7 @@ const IntegratedReport = () => {
       }).join(',');
     }).join('\n');
 
-    // 4. Combine with BOM for Excel UTF-8 support
     const csvContent = `\uFEFF${csvHeaders}\n${summaryRowStr}${rowsStr}`;
-    
-    // 5. Download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
@@ -808,6 +1004,14 @@ const IntegratedReport = () => {
           </>
         );
     }
+  };
+
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'desc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'desc') {
+        direction = 'asc';
+    }
+    setSortConfig({ key, direction });
   };
 
   return (
@@ -936,6 +1140,56 @@ const IntegratedReport = () => {
 
           <hr className="border-dashed border-slate-200"/>
 
+          {/* Row 2.5: Ad Level Search (Only show if splitDimensions includes them) */}
+          {splitDimensions.some(d => AD_LEVEL_DIMENSIONS.includes(d)) && (
+            <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+               <div className="flex flex-wrap items-center gap-4 mb-3">
+                   <div className="flex items-center gap-2">
+                       <Search size={14} className="text-slate-400" />
+                       <span className="text-[11px] font-black text-slate-600 uppercase tracking-widest leading-none">广告层级搜索</span>
+                   </div>
+                   <select 
+                       className="h-8 px-2 bg-white border border-slate-200 rounded text-[11px] font-bold outline-none hover:border-blue-400 transition-colors" 
+                       value={adSearchType} 
+                       onChange={e=>setAdSearchType(e.target.value as any)}
+                   >
+                       <option value="fuzzy">模糊匹配 (Fuzzy)</option>
+                       <option value="exact">精准匹配 (Exact)</option>
+                   </select>
+                   <span className="text-[10px] text-slate-400 font-medium">使用 <code className="bg-slate-200 px-1 rounded text-slate-600">,</code> 代表或(OR)，使用 <code className="bg-slate-200 px-1 rounded text-slate-600">&amp;</code> 代表并(AND)</span>
+               </div>
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                   {splitDimensions.includes('广告系列') && (
+                       <input 
+                           type="text" 
+                           placeholder="输入广告系列名称..." 
+                           className="h-9 px-3 bg-white border border-slate-200 rounded text-xs font-bold outline-none focus:border-blue-500 transition-colors w-full"
+                           value={cmpSearch}
+                           onChange={e => setCmpSearch(e.target.value)}
+                       />
+                   )}
+                   {splitDimensions.includes('广告组') && (
+                       <input 
+                           type="text" 
+                           placeholder="输入广告组名称..." 
+                           className="h-9 px-3 bg-white border border-slate-200 rounded text-xs font-bold outline-none focus:border-blue-500 transition-colors w-full"
+                           value={grpSearch}
+                           onChange={e => setGrpSearch(e.target.value)}
+                       />
+                   )}
+                   {splitDimensions.includes('广告') && (
+                       <input 
+                           type="text" 
+                           placeholder="输入广告名称..." 
+                           className="h-9 px-3 bg-white border border-slate-200 rounded text-xs font-bold outline-none focus:border-blue-500 transition-colors w-full"
+                           value={adSearch}
+                           onChange={e => setAdSearch(e.target.value)}
+                       />
+                   )}
+               </div>
+            </div>
+          )}
+
           {/* Row 3: Dimensions & Metrics */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
              <div className="space-y-4">
@@ -1016,7 +1270,7 @@ const IntegratedReport = () => {
          <div className="p-4 border-b bg-slate-50 flex items-center justify-between">
            <div className="flex items-center gap-2">
              <BarChart3 size={16} className="text-slate-400"/>
-             <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Report Results ({reportData.length})</span>
+             <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Report Results ({displayData.length})</span>
            </div>
            <button className="p-1.5 hover:bg-slate-200 rounded text-slate-400"><Settings2 size={16}/></button>
          </div>
@@ -1029,8 +1283,11 @@ const IntegratedReport = () => {
                  {generatedColumns.map((col, idx) => {
                    const isMetric = col.includes('D') && !['ID', '日期'].includes(col);
                    return (
-                     <th key={idx} className={`px-4 py-2 text-[10px] font-black text-slate-500 uppercase tracking-wider whitespace-nowrap border-r border-slate-100 ${idx < 2 ? 'sticky left-0 bg-slate-100 z-10 drop-shadow-sm' : ''} ${isMetric ? 'text-blue-600 bg-blue-50/30' : ''}`}>
-                       {col}
+                     <th onClick={() => requestSort(col)} key={idx} className={`px-4 py-2 text-[10px] font-black text-slate-500 uppercase tracking-wider whitespace-nowrap border-r border-slate-100 cursor-pointer hover:bg-slate-200 select-none ${idx < 2 ? 'sticky left-0 bg-slate-100 z-10 drop-shadow-sm' : ''} ${isMetric ? 'text-blue-600 bg-blue-50/50' : ''}`}>
+                       <div className="flex items-center gap-1">
+                           {col}
+                           {sortConfig?.key === col && (sortConfig.direction === 'asc' ? <ChevronUp size={12} className="text-blue-600"/> : <ChevronDown size={12} className="text-blue-600"/>)}
+                       </div>
                      </th>
                    );
                  })}
@@ -1038,27 +1295,62 @@ const IntegratedReport = () => {
              </thead>
              <tbody className="divide-y divide-slate-100">
                {/* Summary Row */}
-               {summaryData && (
+               {summaryRow && (
                  <tr className="bg-yellow-50 border-b-2 border-yellow-100 font-black shadow-sm sticky top-0 z-20">
                     {generatedColumns.map((col, idx) => (
                       <td key={idx} className={`px-4 py-3 text-xs text-yellow-800 whitespace-nowrap border-r border-yellow-100 ${idx < 2 ? 'sticky left-0 bg-yellow-50 z-20' : ''}`}>
-                        {idx === 0 ? '汇总 Total' : (summaryData[col] || '-')}
+                        {idx === 0 ? '汇总 Total' : (summaryRow[col] || '-')}
                       </td>
                     ))}
                  </tr>
                )}
 
-               {reportData.map((row) => (
-                 <tr key={row.id} className="hover:bg-blue-50/30 transition-colors h-10">
-                   {generatedColumns.map((col, idx) => (
-                     <td key={idx} className={`px-4 py-2 text-xs font-bold text-slate-700 whitespace-nowrap border-r border-slate-50 ${idx < 2 ? 'sticky left-0 bg-white z-10 drop-shadow-[1px_0_0_rgba(0,0,0,0.05)]' : ''}`}>
-                       {row[col] || '-'}
-                     </td>
-                   ))}
-                 </tr>
-               ))}
-               {reportData.length === 0 && (
-                 <tr><td colSpan={generatedColumns.length || 1} className="text-center py-20 text-slate-300 font-bold">Click "Generate Report" to view data</td></tr>
+               {displayData.map((row, rowIdx) => {
+                 const isDrillDownRow = row.isDrillDownRow;
+                 const expanded = expandedRows[row.drillKey];
+                 return (
+                   <tr key={row.drillKey || row.id || rowIdx} className={`hover:bg-blue-50/40 transition-colors h-10 ${isDrillDownRow && row.level === 0 ? 'bg-slate-50' : ''} ${isDrillDownRow && row.level === 1 ? 'bg-slate-50/50' : ''}`}>
+                     {generatedColumns.map((col, idx) => {
+                       let val = row[col];
+                       let content: React.ReactNode = val || '-';
+                       
+                       if (isDrillDownRow) {
+                           if (col === '广告系列' && row.level === 0) {
+                               content = (
+                                 <button onClick={() => toggleExpand(row.drillKey)} className="flex items-center gap-1 hover:text-blue-600 font-black">
+                                   {expanded ? <ChevronDown size={14}/> : <ChevronRight size={14} className="rotate-0"/>} {val}
+                                 </button>
+                               );
+                           } else if (col === '广告组' && row.level === 1 && generatedColumns.includes('广告')) {
+                               content = (
+                                 <button onClick={() => toggleExpand(row.drillKey)} className="flex items-center gap-1 pl-4 hover:text-blue-600 font-black">
+                                   {expanded ? <ChevronDown size={14}/> : <ChevronRight size={14} className="rotate-0"/>} {val}
+                                 </button>
+                               );
+                           } else if (col === '广告组' && row.level === 1) {
+                               content = <span className="pl-4">{val}</span>;
+                           } else if (col === '广告' && row.level === 2) {
+                               content = <span className="pl-8">{val}</span>;
+                           } else if ((col === '广告系列' && row.level > 0) || (col === '广告组' && row.level > 1) ) {
+                               content = <span className="opacity-30">{val}</span>; // Dim parent columns
+                           }
+                           
+                           // Clear lower level columns for parents visually
+                           if (col === '广告组' && row.level === 0) content = '-';
+                           if (col === '广告' && row.level <= 1) content = '-';
+                       }
+
+                       return (
+                         <td key={idx} className={`px-4 py-2 text-xs font-bold text-slate-700 whitespace-nowrap border-r border-slate-50 ${idx < 2 ? 'sticky left-0 bg-white z-10 drop-shadow-[1px_0_0_rgba(0,0,0,0.05)]' : ''}`}>
+                           {content}
+                         </td>
+                       );
+                     })}
+                   </tr>
+                 );
+               })}
+               {displayData.length === 0 && (
+                 <tr><td colSpan={generatedColumns.length || 1} className="text-center py-20 text-slate-300 font-bold">无数据展示 (No data to display)</td></tr>
                )}
              </tbody>
            </table>
